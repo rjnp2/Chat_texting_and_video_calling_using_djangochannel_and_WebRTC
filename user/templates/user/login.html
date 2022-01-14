@@ -1,0 +1,28 @@
+{% extends './base.html' %}
+{% block title %}Login Page{% endblock %}
+{% load static %}
+
+{% block content %}
+
+<div class="row my-4">
+    <div class="col-md-6 offset-md-3">
+        <div class="border p-3 bg-white">
+            <h4>Login Page</h4>
+            <hr> 
+            <form method="POST">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label>Username</label>
+                    {{ form.username }}
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    {{ form.password }}
+                </div>
+                <button type="submit" class="btn btn-danger btn-flat m-b-30 m-t-30">Log in</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

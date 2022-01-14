@@ -1,0 +1,684 @@
+{% extends './base.html' %}
+{% load convert_date %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-4">
+        {% if messages %}
+        {% for message in messages%}
+        <p> {{message}}</p>
+        {% endfor %}
+        {% endif %}
+        {% if request.user.is_authenticated %}
+        <div class="friend_list">
+            <h4>My Friend List</h4>
+            <div>
+                {% if user_list %}
+                {% for user in user_list %}
+                <hr style="margin:0;" />
+                <div id={{user.user_name}}>
+                    <a href="{% url 'chat:home' user.room_name %}" style="text-decoration: none;">
+                        <h3>{{user.user_name | title}}
+                            <small id="status" style="color: rgb(11, 219, 73); font-size: 20px; margin-left: -5px;">{%if user.status %} o {% endif %}</small>
+                            <span id="unread" style="float: right;">{{user.un_read_msg_count}}</span>
+                        </h3>
+                    </a>
+                </div>
+                {% endfor %}
+                <hr style="margin:0;" />
+                {% else %}
+                <p>No more users....</p>
+                {% endif %}
+            </div>
+        </div>
+        <br>
+        <div class="suggested_friend_list">
+            <h4>Suggested Friend List</h4>
+            <div>
+                {% if all_user %}
+                {% for user in all_user %}
+                <hr style="margin:0;" />
+                <div id={{user.user_name}}>
+                    <a href="{% url 'chat:create_friend' user.id %}"
+                        style="text-decoration: none;"><strong>{{user.username| title}}</strong></a>
+                </div>
+                {% endfor %}
+                <hr style="margin:0;" />
+                {% else %}
+                <p>No more users....</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-8">
+        {% if room_name %}
+
+        <h2 id="callName">{{opposite_user.username | title}}
+        </h2>
+        <button onclick="call(video=false)">Audio Call</button>
+        <button onclick="call(video=true)">Video Call</button>
+        <button id="answer_call" onclick="answer()">Answer Call</button>
+        <div id="chat-main">
+            <div id="chat-log" class="scroll">
+                {% for msg in fetch_all_message %}
+                <p class="chat_box" id="{{msg.id}}">
+                    <small> <b class="check_user">{{msg.user.username}}</b> - {{msg.message_detail.timestamp |convert_date | date:"M d'Y f"}}</small>
+                    <br />
+                    <span style="padding: 7px; color: #ffffff; font-weight: bold;"> {{msg.message_detail.msg}}</span>
+                    <br />
+                    {% if msg.user == request.user %}
+                    {% if msg.message_detail.read %}
+                    <small id="as_read" style="padding-left: 95%;  color:rgb(8, 255, 8);font-weight: bold;">✔✔</small>
+                    {% else %}
+                    <small id="as_read" style="padding-left: 95%; color: #bbb8b8; font-weight: bold;">✔✔</small>
+                    {% endif %}
+                    {% endif %}
+                </p>
+                
+                {% endfor %}
+            </div><br>
+            <input id="chat-message-input" type="text" placeholder="Enter Message..." autofocus
+                style="width: 90%; padding: 8px;">
+            <input id="chat-message-submit" type="button" value="Send" style="padding: 6px;">
+            {{ room_name|json_script:"room_name" }}
+        </div>
+        <div id="video-call-div">
+            <video muted id="local-video" autoplay></video>
+            <video id="remote-video" autoplay></video>
+            <div class="call-action-div">
+                <button id='mute_video' onclick="muteVideo()">Mute Video</button>
+                <button id='mute_audio' onclick="muteAudio()">Mute Audio</button>
+                <button id='sharescreen' onclick="sharescreen()">Share Screen</button>
+                <button onclick="stopCall(is_send=true)">Stop Call</button>
+            </div>
+        </div>
+        {%endif%}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+    let roomName
+    try{
+        roomName = JSON.parse(document.getElementById('room_name').textContent);
+        console.log(roomName)
+    }
+    catch(e){
+        roomName = JSON.parse(document.getElementById('room_name'));
+    }
+
+    if (roomName){
+
+        var otherUsername = document.getElementById('callName').innerHTML
+        var fromUser = '{{request.user.username}}' 
+        var toUser = '{{opposite_user.username}}'
+
+        // scrolling to bottom
+        var messageBody = document.querySelector('.scroll');
+        messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
+
+        // storing remote message
+        var remoteRTCMessage
+        var iceCandidatesFromCaller = [];
+        var alreadyConnected = false
+
+        // storing local and remote videos and play
+        var localStream = new MediaStream
+        var remoteStream = new MediaStream
+
+        var our_video = document.getElementById("local-video");
+        var remote_video = document.getElementById("remote-video");
+
+        // store main RTCpeerConnection
+        var peerConn
+        const check_user = document.querySelectorAll(".check_user")
+        for (let i = 0; i < check_user.length; i++) {
+            if (check_user[i].innerText === '{{request.user.username}}') {
+                check_user[i].innerText = 'You'
+            }
+        }
+        var isTyping = false;
+        var isNotTyping;
+        var videoSender
+        var audioSender
+        var screenStream
+
+        var chatSocket = new WebSocket(
+            ws_scheme + window.location.host + '/ws/chat/' + roomName + '/'
+        );
+
+        // console.log('websocket established')
+        if( document.getElementById(toUser).querySelector('#unread').innerHTML > 0){
+            chatSocket.addEventListener('open', send_all_read);
+        }        
+
+        chatSocket.addEventListener('message', message_fun)
+
+        document.getElementById('chat-message-input').onkeypress = () => {
+            sendIsTypingToUser()
+            if (isNotTyping != undefined) clearTimeout(isNotTyping);
+            isNotTyping = setTimeout(sendIsNotTyping, 700);
+        };
+
+        // sending message to server using websocket
+        document.querySelector('#chat-message-input').onkeyup = (e) => {
+            if (e.keyCode === 13) {  // enter, return
+                document.querySelector('#chat-message-submit').click();
+            }
+        };
+
+        document.querySelector('#chat-message-submit').onclick = (e) => {
+            const messageInputDom = document.querySelector('#chat-message-input');
+            const message = messageInputDom.value;
+            if (message.length == 0) {
+                event.preventDefault();
+                return false;
+            }
+
+            chatSocket.send(JSON.stringify({
+                'message': message,
+                'msg_type': 'TEXT_MESSAGE',
+                'fromUser': fromUser,
+                'toUser':toUser 
+            }));
+
+            messageInputDom.value = '';
+        };
+    }
+
+    function send_all_read() {
+        setTimeout(() => {
+            chatSocket.send(JSON.stringify({
+                'msg_type': 'ALL_MESSAGE_READ',
+                'fromUser': fromUser,
+                'toUser':toUser                
+            }));
+        }, 1000)
+    }
+      
+    const add_element = (data, box_color) => {
+        const user = data.fromUser === '{{request.user.username}}' ? "You" : data.fromUser
+        const error_msg = data.error_message === 'MESSAGE_OUT_OF_LENGTH' ? "<br/>" + "Error:Msg size must be less then 10 char." + "<br/>" + " This Message not sent.." : false
+        const add_read = data.fromUser == '{{request.user.username}}' ? '<small id="as_read" style="padding-left: 95%; font-weight: bold;">✔✔</small>' : ''
+
+        ele = `<p id=${data.msg_id} class="chat_box" style = "background-color : ${box_color};"><small><b>${user}</b> - ${data.timestampe}</small><br/>
+            <span style="color: #ffffff; font-weight: bold;""> ${data.message}</span>
+            <small><br/>${error_msg ? error_msg : add_read}</small></p>`
+        document.querySelector('#chat-log').innerHTML += ele
+        messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
+    }
+
+    const check_read = (fromUser,toUser, msg_id) => {
+        if (document.hidden) {
+            let unread_msg = document.querySelector('title').textContent.split(":")[1];
+            if (unread_msg) {
+                document.querySelector('title').textContent = "Unread Messages : " + (parseInt(unread_msg) + 1)
+            }
+            else {
+                document.querySelector('title').textContent = "Unread Messages : " + 1
+            }
+        }
+        else {
+            chatSocket.send(JSON.stringify({
+                'msg_type': 'MESSAGE_READ',
+                'msg_id': msg_id,
+                'fromUser': fromUser,
+                'toUser':toUser
+            }));
+        }
+    }
+
+    document.addEventListener("visibilitychange", event => {
+        if (document.visibilityState == "visible") {
+            let unread_msg = document.querySelector('title').textContent.split(":")[1];
+            if (unread_msg) {
+                send_all_read()
+            }
+        }
+    })
+
+    async function message_fun(e){
+        const data = JSON.parse(e.data);
+        console.log(data.msg_type)
+        
+        if (data.msg_type === 'ERROR_OCCURED') {
+            if (data.error_message === 'MESSAGE_OUT_OF_LENGTH') {
+                box_color = 'red'
+                add_element(data, box_color)
+            }
+            else if (data.error_message === 'UN_AUTHENTICATED') {
+                alert("You are not authenticated user!!!Login Again..")
+            }
+        }
+
+        else if (data.msg_type === 'TEXT_MESSAGE') {
+            box_color = '#7d7dee'
+            add_element(data, box_color)
+            if (data.toUser == '{{request.user.username}}'){
+                check_read(fromUser,toUser, data.msg_id);
+            }
+        }
+
+        else if (data.msg_type === 'offer') {
+            if (data.fromUser !== '{{request.user.username}}') {
+                //when other called you
+
+                var calling = `${data.fromUser} is calling`;
+                remoteRTCMessage = data.offer
+                isVideo = data.is_video
+                // console.log('answer isVideo', isVideo)
+                console.log('alreadyConnected', alreadyConnected)
+
+                if(alreadyConnected){
+                    peerConn.setRemoteDescription(new RTCSessionDescription(remoteRTCMessage));
+                    console.log("offer setRemoteDescription from alreadyConnected");
+
+                    const answer = await peerConn.createAnswer();
+                    // console.log("offer created", answer);
+
+                    await peerConn.setLocalDescription(answer);
+                    // console.log("offer setLocalDescription");
+
+                    //to send a answer
+                    chatSocket.send(JSON.stringify({
+                        msg_type: 'answer',
+                        fromUser: fromUser,
+                        toUser:toUser,
+                        answer: answer
+                    }));
+                    // console.log("send answer");
+                }
+                else{
+                    //show answer button
+                    document.getElementById("answer_call").innerHTML = calling;
+                    document.getElementById("answer_call").style.display = "inline";
+                }
+            }
+        }
+        else if (data.msg_type === 'answer') {
+            if (data.fromUser !== '{{request.user.username}}') {
+                //when other accept our call
+
+                remoteRTCMessage = data.answer 
+
+                await peerConn.setRemoteDescription(new RTCSessionDescription(remoteRTCMessage));
+                // console.log("offer setRemoteDescription");
+                // console.log("Call Started. They Answered");
+            }
+        }
+        else if (data.msg_type === 'candidate') {
+            if (data.fromUser !== '{{request.user.username}}') {
+
+                try {
+                    if (peerConn) {
+                        // console.log("ICE candidate Added");
+                        // console.log(data.candidate)
+                        data.candidate && (await peerConn.addIceCandidate(data.candidate));
+                    } else {
+                        // console.log("ICE candidate Pushed");
+                        iceCandidatesFromCaller.push(data.candidate);
+                    }
+                } catch (e) {
+                    // console.error('Error adding received ice candidate', e);
+                }
+            }
+        }
+        else if (data.msg_type === 'stop') {
+            if (data.fromUser !== '{{request.user.username}}') {
+                // console.log('stop');
+                await stopCall(is_send=false);
+            }
+        }
+
+        else if (data.msg_type === 'MESSAGE_READ') {
+            if (data.fromUser !== '{{request.user.username}}') {
+                document.getElementById(data.msg_id).querySelector('#as_read').style.color = 'rgb(8, 255, 8)';
+            }
+        }
+
+        else if (data.msg_type === 'IS_TYPING') {
+            if (data.fromUser !== '{{request.user.username}}') {
+                document.getElementById('chat-log').innerHTML += "<span id = 'isTyping'>Typing....</span>"
+                messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
+            }
+        }
+
+        else if (data.msg_type === 'NOT_TYPING') {
+            if (data.fromUser !== '{{request.user.username}}') {
+                document.getElementById('chat-log').removeChild(document.getElementById("isTyping"))
+            }
+        }
+
+        else if (data.msg_type === 'ALL_MESSAGE_READ') {
+            if (data.fromUser == '{{request.user.username}}') {
+                let check_all_read = document.querySelectorAll('#as_read')
+                for (let i = 0; i < check_all_read.length; i++) {
+                    if (check_all_read[i].style.color !== 'rgb(8, 255, 8)') {
+                        check_all_read[i].style.color = 'rgb(8, 255, 8)'
+                    }
+                }
+                document.getElementById(data.toUser).querySelector('#unread').innerHTML = 0
+            }
+        }
+    };
+
+    function sendIsTypingToUser() {
+        if (!isTyping) {
+            chatSocket.send(JSON.stringify({
+                'msg_type': 'IS_TYPING',
+                'fromUser': fromUser,
+                'toUser':toUser
+            }));
+            isTyping = true
+        }
+    }
+
+    function sendIsNotTyping() {
+        chatSocket.send(JSON.stringify({
+            'msg_type': 'NOT_TYPING',
+            'fromUser': fromUser,
+            'toUser':toUser
+        }));
+        isTyping = false
+    }
+
+    let iceServers = {
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302"}
+        ],
+    };
+
+    async function get_media(is_video=false, is_screen=false){
+
+        if(!is_screen){
+            isVideo = is_video
+            document.getElementById("mute_video").innerHTML = isVideo == true ? "Stop Video" : "Video";
+
+            await navigator.mediaDevices.getUserMedia({
+                video: is_video,
+                audio: true,
+                })
+                .then((stream) => {
+                    localStream = stream
+                    our_video.srcObject = stream
+                    our_video.onloadeddata = () => {
+                        our_video.play();
+                    }
+                    // console.log("streaming");
+                })
+                ,(e => {
+                    alert('getUserMedia() error: ' + e.name);
+                })
+        }
+
+        else if(is_screen){
+            await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: "always"
+                },
+                audio: true
+                })
+                .then((stream) => {
+                    screenStream = stream
+                    our_video.srcObject = stream
+                    our_video.onloadeddata = () => {
+                        our_video.play();
+                    };
+                    // console.log("screening");                    
+                })
+                , (e => {
+                    alert('getUserMedia() error: ' + e.name);
+            })
+        }
+    }
+
+    async function creatertcpeer(){
+        peerConn = new RTCPeerConnection(iceServers);
+        // console.log("RTCPeerConnection created");
+
+        peerConn.addEventListener('track', async (event) => {
+            remoteStream = event.streams[0];
+            remote_video.srcObject = remoteStream;
+        });
+
+        // Listen for local ICE candidates on the local RTCPeerConnection
+        peerConn.addEventListener('icecandidate', event => {
+            if (event.candidate) {
+                //to send a candidate
+                // // console.log("Send Call");
+                chatSocket.send(JSON.stringify({
+                    msg_type: 'candidate',
+                    fromUser: fromUser,
+                    toUser:toUser,
+                    candidate: event.candidate
+                }));
+                // console.log("send candidate");
+            }
+        });
+    }
+
+    async function call(isVideo){
+        isVideo = isVideo
+        // console.log('call isVideo', isVideo) 
+        document.getElementById("video-call-div").style.display = "inline"
+        await get_media(is_video=isVideo)
+        alreadyConnected = true
+
+        await creatertcpeer();
+        audioSender = peerConn.addTrack(localStream.getAudioTracks()[0], localStream)
+
+        if(is_video){
+            videoSender = peerConn.addTrack(localStream.getVideoTracks()[0], localStream)
+        };
+
+        const offer = await peerConn.createOffer();
+        // console.log("offer created");
+
+        await peerConn.setLocalDescription(offer);
+        // console.log("offer setLocalDescription");
+
+        //to send a call
+
+        chatSocket.send(JSON.stringify({
+            msg_type: 'offer',
+            fromUser: fromUser,
+            toUser:toUser,
+            offer: offer,
+            is_video: is_video
+        }));
+
+        // console.log("send offer")    
+    }
+
+    async function answer() {
+        document.getElementById("video-call-div").style.display = "inline"
+
+        await get_media(is_video=isVideo)
+        alreadyConnected = true
+        console.log('alreadyConnected', alreadyConnected)
+
+        await creatertcpeer();
+        audioSender = peerConn.addTrack(localStream.getAudioTracks()[0], localStream)
+
+        if(isVideo){
+            videoSender = peerConn.addTrack(localStream.getVideoTracks()[0], localStream)
+        };
+
+        peerConn.setRemoteDescription(new RTCSessionDescription(remoteRTCMessage));
+        // console.log("offer setRemoteDescription");
+
+        if (iceCandidatesFromCaller.length > 0) {
+            //I am having issues with call not being processed in real world (internet, not local)
+            //so I will push iceCandidates I received after the call arrived, push it and, once we accept
+            //add it as ice candidate
+            //if the offer rtc message contains all thes ICE candidates we can ingore this.
+            for (let i = 0; i < iceCandidatesFromCaller.length; i++) {
+                //
+                let candidate = iceCandidatesFromCaller[i];
+                // console.log("ICE candidate Added From queue");
+                try {
+                    await peerConn.addIceCandidate(candidate)
+                } catch (error) {
+                    // console.log(error);
+                }
+            }
+            iceCandidatesFromCaller = [];
+            // console.log("ICE candidate queue cleared");
+        }
+
+        const answer = await peerConn.createAnswer();
+        // console.log("offer created", answer);
+
+        await peerConn.setLocalDescription(answer);
+        // console.log("offer setLocalDescription");
+
+        //to send a answer
+        chatSocket.send(JSON.stringify({
+            msg_type: 'answer',
+            fromUser: fromUser,
+            toUser:toUser,
+            answer: answer
+        }));
+        // console.log("send answer");
+    }
+
+    let isAudio = true
+    let isVideo = true
+    let isScreen = false
+    function muteAudio() {
+        isAudio = !isAudio
+        localStream.getAudioTracks()[0].enabled = isAudio
+        document.getElementById("mute_audio").innerHTML = isAudio == true ? "Mute Audio" : "Unmute Audio";
+    }
+
+    async function muteVideo(){
+        isVideo = !isVideo
+        if(videoSender){
+            localStream.getVideoTracks()[0].enabled = isVideo
+        }
+        else{
+            await localStream.getTracks().forEach((track) => { track.stop()});
+            await get_media(is_video=isVideo)
+            peerConn.removeTrack(audioSender);
+
+            if(videoSender){
+                peerConn.removeTrack(videoSender);   
+            }
+
+            audioSender = peerConn.addTrack(localStream.getAudioTracks()[0], localStream)
+            videoSender = peerConn.addTrack(localStream.getVideoTracks()[0], localStream)
+
+            const offer = await peerConn.createOffer();
+            // console.log("offer created");
+
+            await peerConn.setLocalDescription(offer);
+            // console.log("offer setLocalDescription");
+
+            //to send a call
+            chatSocket.send(JSON.stringify({
+                msg_type: 'offer',
+                fromUser: fromUser,
+                toUser:toUser,
+                offer: offer,
+                is_video: isVideo
+            })
+            );
+
+            // console.log("send offer")
+        }
+        document.getElementById("mute_video").innerHTML = isVideo == true ? "Stop Video" : "Video";
+    }
+
+    async function sharescreen(){
+        isScreen = !isScreen
+        
+        if(isScreen){
+            await get_media(is_video=false, is_screen=isScreen)
+            if(videoSender){
+                videoSender.replaceTrack(screenStream.getVideoTracks()[0]);
+            }
+            else{
+                // peerConn.removeTrack(audioSender);
+                await peerConn.addTrack(screenStream.getVideoTracks()[0], screenStream)
+                // await peerConn.addTrack(screenStream.getAudioTracks()[0], screenStream)
+                const offer = await peerConn.createOffer();
+                // console.log("offer created");
+
+                await peerConn.setLocalDescription(offer);
+                // console.log("offer setLocalDescription");
+
+                //to send a call
+                chatSocket.send(JSON.stringify({
+                    msg_type: 'offer',
+                    fromUser: fromUser,
+                    toUser:toUser,
+                    offer: offer,
+                    is_video: isVideo
+                }));
+
+            console.log("send offer from screen share")
+            }
+        }
+        else{
+            await screenStream.getTracks().forEach((track) => { track.stop()});
+
+            if(videoSender){
+                videoSender.replaceTrack(localStream.getVideoTracks()[0]);
+            }
+            else{
+                our_video.srcObject = null
+            }
+        }
+
+        document.getElementById("sharescreen").innerHTML = isScreen == true ? "Stop share Screen" : "Share Screen";
+    }
+
+    async function stopCall(is_send = true) {
+        try{
+            await localStream.getTracks().forEach((track) => { track.stop()});
+            await screenStream.getTracks().forEach((track) => { track.stop()});
+            screenStream = null
+            await peerConn.removeStream(localStream);
+            await peerConn.close();
+        }
+        catch(e){}
+
+        peerConn = null
+        remote_video.srcObject = null
+        our_video.srcObject = null
+        localStream = null
+        remoteStream = null
+        remoteRTCMessage = null
+        videoSender = null
+        audioSender = null
+        isVideo = true
+        isAudio = true
+        isScreen = false
+        alreadyConnected = false
+
+        // console.log("Vid off");
+        document.getElementById("video-call-div").style.display = "none"
+        document.getElementById("chat-main").style.display = "inline"
+        document.getElementById("answer_call").style.display = "none";
+        document.getElementById("sharescreen").innerHTML = "Share Screen";
+        document.getElementById("mute_video").innerHTML = "Video";
+        document.getElementById("mute_video").innerHTML = "Audio";
+
+        //to stop a call
+        // console.log("Send Call");
+        if (is_send) {
+            chatSocket.send(JSON.stringify({
+                msg_type: 'stop',
+                'fromUser': fromUser,
+                'toUser':toUser
+            }));
+            // console.log("send stop");
+        }
+    }
+
+</script>
+{% endblock %}
