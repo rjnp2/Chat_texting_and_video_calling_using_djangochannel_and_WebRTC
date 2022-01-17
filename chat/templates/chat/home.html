@@ -3,7 +3,7 @@
 
 {% block content %}
 
-<div class="row">
+<div class="row" id="overall-div">
     <div class="col-4">
         {% if messages %}
         {% for message in messages%}
@@ -84,17 +84,17 @@
             <input id="chat-message-submit" type="button" value="Send" style="padding: 6px;">
             {{ room_name|json_script:"room_name" }}
         </div>
-        <div id="video-call-div">
-            <video muted id="local-video" autoplay></video>
-            <video id="remote-video" autoplay></video>
-            <div class="call-action-div">
-                <button id='mute_video' onclick="muteVideo()">Mute Video</button>
-                <button id='mute_audio' onclick="muteAudio()">Mute Audio</button>
-                <button id='sharescreen' onclick="sharescreen()">Share Screen</button>
-                <button onclick="stopCall(is_send=true)">Stop Call</button>
-            </div>
-        </div>
         {%endif%}
+    </div>
+</div>
+<div id="video-call-div">
+    <video muted id="local-video" autoplay></video>
+    <video id="remote-video" autoplay></video>
+    <div class="call-action-div">
+        <button id='mute_video' onclick="muteVideo()">Mute Video</button>
+        <button id='mute_audio' onclick="muteAudio()">Mute Audio</button>
+        <button id='sharescreen' onclick="sharescreen()">Share Screen</button>
+        <button onclick="stopCall(is_send=true)">Stop Call</button>
     </div>
 </div>
 
@@ -465,6 +465,7 @@
         isVideo = isVideo
         // console.log('call isVideo', isVideo) 
         document.getElementById("video-call-div").style.display = "inline"
+        document.getElementById("overall-div").style.display = "none"
         await get_media(is_video=isVideo)
         alreadyConnected = true
 
@@ -496,6 +497,7 @@
 
     async function answer() {
         document.getElementById("video-call-div").style.display = "inline"
+        document.getElementById("overall-div").style.display = "none"
 
         await get_media(is_video=isVideo)
         alreadyConnected = true
@@ -667,6 +669,7 @@
         document.getElementById("sharescreen").innerHTML = "Share Screen";
         document.getElementById("mute_video").innerHTML = "Video";
         document.getElementById("mute_video").innerHTML = "Audio";
+        document.getElementById("overall-div").style.display = "flex"
 
         //to stop a call
         // console.log("Send Call");
