@@ -24,7 +24,7 @@ SECRET_KEY = 'django-insecure-@64q9p%n-si)8_$=d0sgzt8smi@puf-6rc8pstj)z85#@dt97y
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['38d9-103-207-82-220.ngrok.io', '127.0.0.1']
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
@@ -139,4 +139,4 @@ CRISPY_TEMPLATE_PACK = 'bootstrap4'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = 'user/login'
-CSRF_TRUSTED_ORIGINS = ['https://38d9-103-207-82-220.ngrok.io']
+CSRF_TRUSTED_ORIGINS = ['*']
