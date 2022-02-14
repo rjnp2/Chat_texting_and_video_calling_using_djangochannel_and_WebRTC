@@ -17,6 +17,7 @@ div.scroll {
 ::-webkit-scrollbar {
 width: 3px;
 }
+
 /* Track */
 ::-webkit-scrollbar-track {
 box-shadow: inset 0 0 5px grey; 
@@ -36,10 +37,12 @@ background: #b81f1f;
 .chat_box{
     border: 1px solid black;
     width: 50%;
-    height: auto;
     border-radius: 8px;
     padding: 3px;
-    background-color:#7d7dee;
+}
+
+.chat-log li{
+    list-style-type:none;
 }
 
 #video-call-div {
@@ -47,7 +50,7 @@ background: #b81f1f;
     top: 0;
     left: 0;
     width: 100%;
-    height: 85vh;
+    height: 100vh;
     display: none;
 }
 
@@ -55,15 +58,27 @@ background: #b81f1f;
     display: none;
 }
 
+#as_read{
+    position: relative;
+    top: -49px;
+    left: 100%;
+}
+
 #local-video {
     position: absolute;
-    top: 0;
+    top: 97px;
     left: 0;
     margin: 16px;
     border-radius: 16px;
     max-width: 20%;
     max-height: 20%;
     background: #ffffff;
+}
+
+.contact-profile{
+    display: flex;
+    justify-content: space-between;
+    align-content: center;
 }
 
 #remote-video {
@@ -74,7 +89,7 @@ background: #b81f1f;
 
 .call-action-div {
     position: absolute;
-    left: 20%;
+    left: 35%;
     bottom: 8px;
 }
 

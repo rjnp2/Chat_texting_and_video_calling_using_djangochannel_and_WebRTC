@@ -4,7 +4,7 @@
 {% block content %}
 
 <div class="row" id="overall-div">
-    <div class="col-4">
+    <div class="col-3">
         {% if messages %}
         {% for message in messages%}
         <p> {{message}}</p>
@@ -52,36 +52,40 @@
         </div>
         {% endif %}
     </div>
-    <div class="col-8">
-        {% if room_name %}
 
-        <h2 id="callName">{{opposite_user.username | title}}
-        </h2>
-        <button onclick="call(video=false)">Audio Call</button>
-        <button onclick="call(video=true)">Video Call</button>
-        <button id="answer_call" onclick="answer()">Answer Call</button>
+    <div class="col-9 content">
+        {% if room_name %}
+        <div class="contact-profile">
+            <p id="callName">{{opposite_user.username | title}}</p>
+            <div id="older_msg_div">
+              <button class="btn btn-outline-info" onclick="call(video=false)">Audio Call</button>
+              <button class="btn btn-outline-info" onclick="call(video=true)">Video Call</button>
+              <button class="btn btn-outline-info" id="answer_call" onclick="answer()">Answer Call</button>
+            </div>
+          </div>
+
         <div id="chat-main">
             <div id="chat-log" class="scroll">
                 {% for msg in fetch_all_message %}
-                <p class="chat_box" id="{{msg.id}}">
-                    <small> <b class="check_user">{{msg.user.username}}</b> - {{msg.message_detail.timestamp |convert_date | date:"M d'Y f"}}</small>
-                    <br />
-                    <span style="padding: 7px; color: #ffffff; font-weight: bold;"> {{msg.message_detail.msg}}</span>
-                    <br />
+                <div class="chat_box" id="{{msg.id}}">
+
+                    <small> <b class="check_user">{{msg.user.username}}</b>- {{msg.message_detail.timestamp |convert_date | date:"M d'Y f"}}</small>
+                    <p>{{msg.message_detail.msg}}</p>
                     {% if msg.user == request.user %}
                     {% if msg.message_detail.read %}
-                    <small id="as_read" style="padding-left: 95%;  color:rgb(8, 255, 8);font-weight: bold;">✔✔</small>
+                    
+                    <small id="as_read" style="color:rgb(8, 255, 8)">✔✔</small>
                     {% else %}
-                    <small id="as_read" style="padding-left: 95%; color: #bbb8b8; font-weight: bold;">✔✔</small>
+                    <small id="as_read" style="color: #bbb8b8;">✔✔</small>
                     {% endif %}
                     {% endif %}
-                </p>
-                
+                </div>
+                <br>
                 {% endfor %}
             </div><br>
             <input id="chat-message-input" type="text" placeholder="Enter Message..." autofocus
                 style="width: 90%; padding: 8px;">
-            <input id="chat-message-submit" type="button" value="Send" style="padding: 6px;">
+            <input class="btn btn-secondary btn-lg" id="chat-message-submit" type="button" value="Send" style="padding: 6px;">
             {{ room_name|json_script:"room_name" }}
         </div>
         {%endif%}
@@ -91,10 +95,10 @@
     <video muted id="local-video" autoplay></video>
     <video id="remote-video" autoplay></video>
     <div class="call-action-div">
-        <button id='mute_video' onclick="muteVideo()">Mute Video</button>
-        <button id='mute_audio' onclick="muteAudio()">Mute Audio</button>
-        <button id='sharescreen' onclick="sharescreen()">Share Screen</button>
-        <button onclick="stopCall(is_send=true)">Stop Call</button>
+        <button class="btn btn-secondary btn-lg" id='mute_video' onclick="muteVideo()">Mute Video</button>
+        <button class="btn btn-secondary btn-lg" id='mute_audio' onclick="muteAudio()">Mute Audio</button>
+        <button class="btn btn-secondary btn-lg" id='sharescreen' onclick="sharescreen()">Share Screen</button>
+        <button class="btn btn-secondary btn-lg" onclick="stopCall(is_send=true)">Stop Call</button>
     </div>
 </div>
 
@@ -203,11 +207,10 @@
     const add_element = (data, box_color) => {
         const user = data.fromUser === '{{request.user.username}}' ? "You" : data.fromUser
         const error_msg = data.error_message === 'MESSAGE_OUT_OF_LENGTH' ? "<br/>" + "Error:Msg size must be less then 10 char." + "<br/>" + " This Message not sent.." : false
-        const add_read = data.fromUser == '{{request.user.username}}' ? '<small id="as_read" style="padding-left: 95%; font-weight: bold;">✔✔</small>' : ''
+        const as_read = data.fromUser == fromUser?`<small id="as_read" style="color: #bbb8b8;">✔✔</small>`: '';
 
-        ele = `<p id=${data.msg_id} class="chat_box" style = "background-color : ${box_color};"><small><b>${user}</b> - ${data.timestampe}</small><br/>
-            <span style="color: #ffffff; font-weight: bold;""> ${data.message}</span>
-            <small><br/>${error_msg ? error_msg : add_read}</small></p>`
+        ele = `<div class="chat_box" id=${data.msg_id}><small><b>${user}</b> - ${data.timestampe}</small><br/>
+            <p>${data.message}</p>${as_read}`
         document.querySelector('#chat-log').innerHTML += ele
         messageBody.scrollTop = messageBody.scrollHeight - messageBody.clientHeight;
     }
@@ -335,6 +338,7 @@
         }
 
         else if (data.msg_type === 'MESSAGE_READ') {
+            console.log(data.msg_id)
             if (data.fromUser !== '{{request.user.username}}') {
                 document.getElementById(data.msg_id).querySelector('#as_read').style.color = 'rgb(8, 255, 8)';
             }
@@ -403,6 +407,7 @@
                 audio: true,
                 })
                 .then((stream) => {
+                    console.log(stream)
                     localStream = stream
                     our_video.srcObject = stream
                     our_video.onloadeddata = () => {
@@ -423,6 +428,7 @@
                 audio: true
                 })
                 .then((stream) => {
+                    console.log(stream)
                     screenStream = stream
                     our_video.srcObject = stream
                     our_video.onloadeddata = () => {
@@ -600,6 +606,7 @@
         
         if(isScreen){
             await get_media(is_video=false, is_screen=isScreen)
+
             if(videoSender){
                 videoSender.replaceTrack(screenStream.getVideoTracks()[0]);
             }
@@ -625,6 +632,7 @@
             console.log("send offer from screen share")
             }
         }
+
         else{
             await screenStream.getTracks().forEach((track) => { track.stop()});
 
@@ -633,6 +641,7 @@
             }
             else{
                 our_video.srcObject = null
+                remote_video.srcObject = null
             }
         }
 

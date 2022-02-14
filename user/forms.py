@@ -14,7 +14,7 @@ class LoginForm(forms.Form):
         'type': 'password'
     }))
 
-class UserForm(UserCreationForm):
+class UserRegisterForm(UserCreationForm):
 
     class Meta:
         model = User

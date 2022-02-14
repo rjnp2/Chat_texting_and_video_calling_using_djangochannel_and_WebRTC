@@ -9,3 +9,36 @@ django-crispy-forms==1.13.0
 # sudo systemctl start redis
 # sudo systemctl stop redis
 # sudo systemctl restart redis
+
+#TURN server name and realm
+realm=rjn
+server-name=rjn_sever
+
+# IPs the TURN server listens to
+listening-ip=0.0.0.0
+
+# External IP-Address of the TURN server
+external-ip=27.34.22.121
+
+# Main listening port
+listening-port=3478
+
+# Further ports that are open for communication
+min-port=10000
+max-port=20000
+
+# Use fingerprint in TURN message
+fingerprint
+
+
+# Log file path
+log-file=/var/log/turnserver.log
+
+# Enable verbose logging
+verbose
+
+# Specify the user for the TURN authentification
+user=rjnp2:1234op09
+
+# Enable long-term credential mechanism
+lt-cred-mech
